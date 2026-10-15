@@ -1,6 +1,6 @@
 use crate::types::{Amount, ClientId, TransactionId};
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum TransactionStatus {
     Completed,
     Disputed,
@@ -8,7 +8,7 @@ pub enum TransactionStatus {
     ChargedBack,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum TransactionKind {
     Debit,
     Credit,

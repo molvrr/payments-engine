@@ -3,6 +3,8 @@ mod deposit;
 mod dispute;
 mod error;
 mod resolve;
+#[cfg(test)]
+mod tests;
 mod withdrawal;
 
 use std::collections::HashMap;

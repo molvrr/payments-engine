@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 #[derive(Deserialize, Eq, Hash, PartialEq, Copy, Clone, Debug)]
-pub struct ClientId(u16);
+pub struct ClientId(pub(crate) u16);
 
 impl std::fmt::Display for ClientId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -10,7 +10,7 @@ impl std::fmt::Display for ClientId {
 }
 
 #[derive(Deserialize, Eq, Hash, PartialEq, Copy, Clone, Debug)]
-pub struct TransactionId(u32);
+pub struct TransactionId(pub(crate) u32);
 
 impl std::fmt::Display for TransactionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

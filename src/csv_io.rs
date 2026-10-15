@@ -1,6 +1,6 @@
 use std::fmt;
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 
 use crate::account::Account;
 use crate::operation::Operation;
@@ -30,12 +30,18 @@ pub fn read_operations(
     path: &str,
 ) -> Result<impl Iterator<Item = Result<Operation, csv::Error>>, CsvIoError> {
     let file = File::open(path).map_err(CsvIoError::OpenInput)?;
-    let reader = csv::ReaderBuilder::new()
+    Ok(operations_from_reader(file))
+}
+
+/// Streams operations from any CSV source (file, socket, in-memory buffer).
+pub fn operations_from_reader<R: Read>(
+    input: R,
+) -> impl Iterator<Item = Result<Operation, csv::Error>> {
+    csv::ReaderBuilder::new()
         .flexible(true)
         .trim(csv::Trim::All)
-        .from_reader(file);
-
-    Ok(reader.into_deserialize())
+        .from_reader(input)
+        .into_deserialize()
 }
 
 pub fn write_accounts<'a, W: Write>(
@@ -61,4 +67,52 @@ pub fn write_accounts<'a, W: Write>(
     }
 
     writer.flush().map_err(CsvIoError::Flush)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{Amount, ClientId};
+
+    fn render(accounts: &[Account]) -> String {
+        let mut output = Vec::new();
+        write_accounts(&mut output, accounts).expect("writing to a Vec cannot fail");
+        String::from_utf8(output).unwrap()
+    }
+
+    #[test]
+    fn writes_only_the_header_when_there_are_no_accounts() {
+        assert_eq!(render(&[]), "client,available,held,total,locked\n");
+    }
+
+    #[test]
+    fn writes_balances_total_and_locked_flag() {
+        let accounts = [
+            Account {
+                id: ClientId(1),
+                available: Amount::new(15, 1),
+                held: Amount::new(2500, 4),
+                locked: false,
+            },
+            Account {
+                id: ClientId(2),
+                available: Amount::new(-7, 0),
+                held: Amount::ZERO,
+                locked: true,
+            },
+        ];
+
+        assert_eq!(
+            render(&accounts),
+            "client,available,held,total,locked\n\
+             1,1.5,0.2500,1.7500,false\n\
+             2,-7,0,-7,true\n"
+        );
+    }
+
+    #[test]
+    fn missing_input_file_is_an_open_error() {
+        let result = read_operations("this/file/does/not/exist.csv");
+        assert!(matches!(result, Err(CsvIoError::OpenInput(_))));
+    }
 }
