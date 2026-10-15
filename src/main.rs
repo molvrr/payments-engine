@@ -1,11 +1,11 @@
 use std::process::ExitCode;
 
-use payments_engine::engine::Engine;
-use payments_engine::io_layer::{self, IoError};
+use payments_engine::Engine;
+use payments_engine::csv_io::{self, CsvIoError};
 
 fn main() -> ExitCode {
     let Some(csv_file) = std::env::args().nth(1) else {
-        eprintln!("Usage should be ./binary <transactions_file.csv>");
+        eprintln!("Usage should be ./payments-engine <transactions_file.csv>");
         return ExitCode::FAILURE;
     };
 
@@ -18,10 +18,10 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(csv_file: &str) -> Result<(), IoError> {
+fn run(csv_file: &str) -> Result<(), CsvIoError> {
     let mut engine = Engine::default();
 
-    for result in io_layer::read_operations(csv_file)? {
+    for result in csv_io::read_operations(csv_file)? {
         match result {
             Ok(operation) => {
                 if let Err(err) = engine.process(operation) {
@@ -32,5 +32,5 @@ fn run(csv_file: &str) -> Result<(), IoError> {
         }
     }
 
-    io_layer::write_accounts(std::io::stdout().lock(), engine.state.accounts.values())
+    csv_io::write_accounts(std::io::stdout().lock(), engine.state.accounts.values())
 }

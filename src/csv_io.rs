@@ -6,14 +6,14 @@ use crate::account::Account;
 use crate::operation::Operation;
 
 #[derive(Debug)]
-pub enum IoError {
+pub enum CsvIoError {
     OpenInput(io::Error),
     WriteHeaders(csv::Error),
     WriteRecord(csv::Error),
     Flush(io::Error),
 }
 
-impl fmt::Display for IoError {
+impl fmt::Display for CsvIoError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::OpenInput(err) => write!(f, "could not open input file: {err}"),
@@ -24,12 +24,12 @@ impl fmt::Display for IoError {
     }
 }
 
-impl std::error::Error for IoError {}
+impl std::error::Error for CsvIoError {}
 
 pub fn read_operations(
     path: &str,
-) -> Result<impl Iterator<Item = Result<Operation, csv::Error>>, IoError> {
-    let file = File::open(path).map_err(IoError::OpenInput)?;
+) -> Result<impl Iterator<Item = Result<Operation, csv::Error>>, CsvIoError> {
+    let file = File::open(path).map_err(CsvIoError::OpenInput)?;
     let reader = csv::ReaderBuilder::new()
         .flexible(true)
         .trim(csv::Trim::All)
@@ -41,12 +41,12 @@ pub fn read_operations(
 pub fn write_accounts<'a, W: Write>(
     output: W,
     accounts: impl IntoIterator<Item = &'a Account>,
-) -> Result<(), IoError> {
+) -> Result<(), CsvIoError> {
     let mut writer = csv::Writer::from_writer(output);
 
     writer
         .write_record(["client", "available", "held", "total", "locked"])
-        .map_err(IoError::WriteHeaders)?;
+        .map_err(CsvIoError::WriteHeaders)?;
 
     for account in accounts {
         writer
@@ -57,8 +57,8 @@ pub fn write_accounts<'a, W: Write>(
                 account.total().to_string(),
                 account.locked.to_string(),
             ])
-            .map_err(IoError::WriteRecord)?;
+            .map_err(CsvIoError::WriteRecord)?;
     }
 
-    writer.flush().map_err(IoError::Flush)
+    writer.flush().map_err(CsvIoError::Flush)
 }
