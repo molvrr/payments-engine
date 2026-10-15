@@ -1,12 +1,35 @@
+mod chargeback;
+mod deposit;
+mod dispute;
+mod resolve;
+mod withdrawal;
+
+use std::collections::HashMap;
+
 use crate::account::Account;
 use crate::operation::Operation;
-use crate::state::State;
-use crate::transaction::{Transaction, TransactionKind, TransactionStatus};
+use crate::transaction::Transaction;
+use crate::types::{ClientId, TransactionId};
 
-pub struct Engine {
-    state: State,
+pub struct State {
+    pub accounts: HashMap<ClientId, Account>,
+    pub transactions: HashMap<TransactionId, Transaction>,
 }
 
+impl State {
+    pub fn new() -> Self {
+        Self {
+            accounts: HashMap::new(),
+            transactions: HashMap::new(),
+        }
+    }
+}
+
+pub struct Engine {
+    pub state: State,
+}
+
+#[derive(Debug)]
 pub enum ProcessError {}
 
 impl Engine {
@@ -18,127 +41,31 @@ impl Engine {
 
     pub fn process(&mut self, transaction: Operation) -> Result<(), ProcessError> {
         match transaction {
-            Operation::Deposit {
-                client_id,
-                transaction_id,
-                amount,
-            } => {
-                let transaction = self.state.transactions.get(&transaction_id);
-
-                if let Some(_) = transaction {
-                    // TODO: Log transaction already exists
-                    return Ok(());
-                }
-
-                let account = self
-                    .state
-                    .accounts
-                    .entry(client_id)
-                    .or_insert(Account::new(client_id));
-
-                if account.locked {
-                    // TODO: Log when account is locked (?)
-                    return Ok(());
-                }
-
-                self.state.transactions.insert(
-                    transaction_id,
-                    Transaction {
-                        id: transaction_id,
-                        amount,
-                        status: TransactionStatus::Completed,
-                        client_id,
-                        kind: TransactionKind::Debit,
-                    },
-                );
-
-                account.available += amount;
-            }
-            Operation::Withdrawal {
-                client_id,
-                transaction_id,
-                amount,
-            } => {
-                let transaction = self.state.transactions.get(&transaction_id);
-
-                if let Some(_) = transaction {
-                    // TODO: Log transaction already exists
-                    return Ok(());
-                }
-
-                let account = self
-                    .state
-                    .accounts
-                    .entry(client_id)
-                    .or_insert(Account::new(client_id));
-
-                if account.locked {
-                    // TODO: Log when account is locked (?)
-                    return Ok(());
-                }
-
-                self.state.transactions.insert(
-                    transaction_id,
-                    Transaction {
-                        id: transaction_id,
-                        amount,
-                        status: TransactionStatus::Completed,
-                        client_id,
-                        kind: TransactionKind::Debit,
-                    },
-                );
-
-                account.available -= amount;
-            }
-            Operation::Dispute {
-                client_id,
-                transaction_id,
-            } => {
-                let transaction_opt = self.state.transactions.get_mut(&transaction_id);
-
-                if let Some(transaction) = transaction_opt {
-                    if transaction.client_id != client_id {
-                        // TODO: Log different client
-                        return Ok(());
-                    }
-
-                    if transaction.status != TransactionStatus::Completed
-                        || transaction.kind == TransactionKind::Debit
-                    {
-                        // TODO: Log transaction status
-                        return Ok(());
-                    }
-
-                    if let Some(account) = self.state.accounts.get_mut(&client_id) {
-                        account.available -= transaction.amount;
-                        account.held += transaction.amount;
-                        transaction.status = TransactionStatus::Disputed;
-                    }
-                }
-            }
-            Operation::Resolve {
-                client_id,
-                transaction_id,
-            } => {
-                let transaction_opt = self.state.transactions.get_mut(&transaction_id);
-
-                if let Some(transaction) = transaction_opt {
-                    if transaction.client_id != client_id {
-                        // TODO: Log different client
-                        return Ok(());
-                    }
-
-                    if transaction.status != TransactionStatus::Disputed {
-                        // TODO: Log different status
-                        return Ok(());
-                    }
-                }
-            }
-            Operation::Chargeback {
-                client_id,
-                transaction_id,
-            } => todo!(),
+            Operation::Deposit(deposit_data) => deposit::run(
+                &mut self.state.transactions,
+                &mut self.state.accounts,
+                deposit_data,
+            ),
+            Operation::Withdrawal(withdrawal_data) => withdrawal::run(
+                &mut self.state.transactions,
+                &mut self.state.accounts,
+                withdrawal_data,
+            ),
+            Operation::Dispute(dispute_data) => dispute::run(
+                &mut self.state.transactions,
+                &mut self.state.accounts,
+                dispute_data,
+            ),
+            Operation::Resolve(resolve_data) => resolve::run(
+                &mut self.state.transactions,
+                &mut self.state.accounts,
+                resolve_data,
+            ),
+            Operation::Chargeback(chargeback_data) => chargeback::run(
+                &mut self.state.transactions,
+                &mut self.state.accounts,
+                chargeback_data,
+            ),
         }
-        Ok(())
     }
 }

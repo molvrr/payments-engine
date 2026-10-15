@@ -16,7 +16,8 @@ impl Account {
             locked: false,
         }
     }
-    fn total(&self) -> Amount {
+
+    pub fn total(&self) -> Amount {
         self.available + self.held
     }
 }
