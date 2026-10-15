@@ -1,6 +1,7 @@
 mod chargeback;
 mod deposit;
 mod dispute;
+mod error;
 mod resolve;
 mod withdrawal;
 
@@ -29,8 +30,7 @@ pub struct Engine {
     pub state: State,
 }
 
-#[derive(Debug)]
-pub enum ProcessError {}
+pub use error::ProcessingError;
 
 impl Engine {
     pub fn new() -> Self {
@@ -39,7 +39,7 @@ impl Engine {
         }
     }
 
-    pub fn process(&mut self, transaction: Operation) -> Result<(), ProcessError> {
+    pub fn process(&mut self, transaction: Operation) -> Result<(), ProcessingError> {
         match transaction {
             Operation::Deposit(deposit_data) => deposit::run(
                 &mut self.state.transactions,

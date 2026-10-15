@@ -21,7 +21,7 @@ fn main() {
             match result {
                 Ok(transaction) => {
                     if let Err(err) = engine.process(transaction) {
-                        eprintln!("Could not process transaction: {err:?}")
+                        eprintln!("Could not process transaction: {err}")
                     }
                 }
                 Err(err) => {
@@ -44,7 +44,7 @@ fn main() {
                     account.total().to_string(),
                     account.locked.to_string(),
                 ])
-                .expect("Could not write headers");
+                .expect("Could not write record");
         }
 
         writer.flush().expect("Could not flush");

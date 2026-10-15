@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::account::Account;
-use crate::engine::ProcessError;
+use crate::engine::ProcessingError;
 use crate::operation::WithdrawalData;
 use crate::transaction::{Transaction, TransactionKind, TransactionStatus};
 use crate::types::{ClientId, TransactionId};
@@ -10,39 +10,42 @@ pub fn run(
     transactions: &mut HashMap<TransactionId, Transaction>,
     accounts: &mut HashMap<ClientId, Account>,
     withdrawal_data: WithdrawalData,
-) -> Result<(), ProcessError> {
-    let transaction = transactions.get(&withdrawal_data.transaction_id);
+) -> Result<(), ProcessingError> {
+    let WithdrawalData {
+        client_id,
+        transaction_id,
+        amount,
+    } = withdrawal_data;
 
-    if let Some(t) = transaction {
-        eprintln!("Transaction {:?} already exists", t.id);
-        return Ok(());
+    if transactions.contains_key(&transaction_id) {
+        return Err(ProcessingError::DuplicateTransaction(transaction_id));
     }
 
     let account = accounts
-        .entry(withdrawal_data.client_id)
-        .or_insert(Account::new(withdrawal_data.client_id));
+        .entry(client_id)
+        .or_insert_with(|| Account::new(client_id));
 
     if account.locked {
-        eprintln!("Client account {:?} is locked", account.id);
-        return Ok(());
+        return Err(ProcessingError::LockedAccount(client_id));
     }
 
-    if account.available < withdrawal_data.amount {
-        eprintln!("Client account {:?} has no sufficient funds", account.id);
-        return Ok(());
+    if account.available < amount {
+        return Err(ProcessingError::InsufficientFunds(client_id));
     }
+
+    // Cannot underflow: amount > 0 and available >= amount.
+    account.available -= amount;
 
     transactions.insert(
-        withdrawal_data.transaction_id,
+        transaction_id,
         Transaction {
-            id: withdrawal_data.transaction_id,
-            amount: withdrawal_data.amount,
+            id: transaction_id,
+            amount,
             status: TransactionStatus::Completed,
-            client_id: withdrawal_data.client_id,
+            client_id,
             kind: TransactionKind::Debit,
         },
     );
 
-    account.available -= withdrawal_data.amount;
     Ok(())
 }

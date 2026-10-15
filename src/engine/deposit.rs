@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::account::Account;
-use crate::engine::ProcessError;
+use crate::engine::ProcessingError;
 use crate::operation::DepositData;
 use crate::transaction::{Transaction, TransactionKind, TransactionStatus};
 use crate::types::{ClientId, TransactionId};
@@ -10,35 +10,45 @@ pub fn run(
     transactions: &mut HashMap<TransactionId, Transaction>,
     accounts: &mut HashMap<ClientId, Account>,
     deposit_data: DepositData,
-) -> Result<(), ProcessError> {
-    let transaction = transactions.get(&deposit_data.transaction_id);
+) -> Result<(), ProcessingError> {
+    let DepositData {
+        client_id,
+        transaction_id,
+        amount,
+    } = deposit_data;
 
-    if let Some(t) = transaction {
-        eprintln!("Transaction {:?} already exists", t.id);
-        return Ok(());
+    if transactions.contains_key(&transaction_id) {
+        return Err(ProcessingError::DuplicateTransaction(transaction_id));
     }
 
     let account = accounts
-        .entry(deposit_data.client_id)
-        .or_insert(Account::new(deposit_data.client_id));
+        .entry(client_id)
+        .or_insert_with(|| Account::new(client_id));
 
     if account.locked {
-        eprintln!("Client account {:?} is locked", account.id);
-        return Ok(());
+        return Err(ProcessingError::LockedAccount(client_id));
     }
 
+    // Check the total (available + held), not only available: otherwise a
+    // client with held funds could push total() past Decimal::MAX.
+    let new_available = account
+        .total()
+        .checked_add(amount)
+        .and_then(|_| account.available.checked_add(amount))
+        .ok_or(ProcessingError::Overflow(client_id))?;
+
+    account.available = new_available;
+
     transactions.insert(
-        deposit_data.transaction_id,
+        transaction_id,
         Transaction {
-            id: deposit_data.transaction_id,
-            amount: deposit_data.amount,
+            id: transaction_id,
+            amount,
             status: TransactionStatus::Completed,
-            client_id: deposit_data.client_id,
+            client_id,
             kind: TransactionKind::Credit,
         },
     );
-
-    account.available += deposit_data.amount;
 
     Ok(())
 }

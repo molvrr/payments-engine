@@ -44,6 +44,12 @@ impl TryFrom<RawRecord> for Operation {
             amount,
         } = r;
 
+        if let Some(a) = amount {
+            if a <= 0.into() {
+                return Err(format!("Amount can't be less than/equal to zero"));
+            }
+        }
+
         Ok(match (kind, amount) {
             (RawKind::Deposit, Some(amount)) => Operation::Deposit(DepositData {
                 client_id,
