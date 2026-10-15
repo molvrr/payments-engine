@@ -17,7 +17,7 @@ CSV rows ──► csv_io::read_operations ──► Operation ──► Engine:
               (streaming, one row          (validated     (pure state
                at a time)                   at parse time)  machine)
 ```
-- **Invalid rows are rejected at parse time.** `Operation` is built from the raw row through `TryFrom`. Deposits and withdrawals must have a strictly positive amount, and disputes, resolves and chargebacks must have no amount. A malformed row is rejected before it reaches the engine, so the engine never has to handle one.
+- **Invalid rows are rejected at parse time.** `Operation` is built from the raw row through `TryFrom`. Deposits and withdrawals must have a strictly positive amount. Disputes, resolves and chargebacks refer to an existing transaction, so any amount on them is ignored. A malformed row is rejected before it reaches the engine, so the engine never has to handle one.
 - **Separate id types.** `ClientId(u16)` and `TransactionId(u32)` are distinct types, so one can't be passed where the other is expected.
 - **Exact decimal amounts.** Amounts use `rust_decimal::Decimal`, never floats, so binary approximations don't cause accumulating rounding errors.
 - **One module per operation.** Each operation lives in its own file under `src/engine/` (`deposit.rs`, `withdrawal.rs`, `dispute.rs`, `resolve.rs`, `chargeback.rs`). Each one validates first and changes state only if every check passes.

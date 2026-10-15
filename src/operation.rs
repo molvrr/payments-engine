@@ -67,22 +67,23 @@ impl TryFrom<RawRecord> for Operation {
                     amount,
                 })
             }
-            (RawKind::Dispute, None) => Operation::Dispute(DisputeData {
+            // Disputes, resolves and chargebacks refer to an existing
+            // transaction, so any amount on them is ignored.
+            (RawKind::Dispute, _) => Operation::Dispute(DisputeData {
                 client_id,
                 transaction_id,
             }),
-            (RawKind::Resolve, None) => Operation::Resolve(ResolveData {
+            (RawKind::Resolve, _) => Operation::Resolve(ResolveData {
                 client_id,
                 transaction_id,
             }),
-            (RawKind::Chargeback, None) => Operation::Chargeback(ChargebackData {
+            (RawKind::Chargeback, _) => Operation::Chargeback(ChargebackData {
                 client_id,
                 transaction_id,
             }),
             (kind @ (RawKind::Deposit | RawKind::Withdrawal), None) => {
                 return Err(format!("{kind:?} is missing an amount"));
             }
-            (kind, Some(_)) => return Err(format!("{kind:?} must not have an amount")),
         })
     }
 }
@@ -259,10 +260,28 @@ mod tests {
     }
 
     #[test]
-    fn rejects_amount_on_dispute_resolve_and_chargeback() {
-        assert!(parse_err("dispute,1,1,1.0").contains("must not have an amount"));
-        assert!(parse_err("resolve,1,1,1.0").contains("must not have an amount"));
-        assert!(parse_err("chargeback,1,1,1.0").contains("must not have an amount"));
+    fn ignores_amount_on_dispute_resolve_and_chargeback() {
+        assert!(matches!(
+            parse_ok("dispute,1,2,1.0"),
+            Operation::Dispute(DisputeData {
+                client_id: ClientId(1),
+                transaction_id: TransactionId(2)
+            })
+        ));
+        assert!(matches!(
+            parse_ok("resolve,1,2,1.0"),
+            Operation::Resolve(ResolveData {
+                client_id: ClientId(1),
+                transaction_id: TransactionId(2)
+            })
+        ));
+        assert!(matches!(
+            parse_ok("chargeback,1,2,1.0"),
+            Operation::Chargeback(ChargebackData {
+                client_id: ClientId(1),
+                transaction_id: TransactionId(2)
+            })
+        ));
     }
 
     #[test]
