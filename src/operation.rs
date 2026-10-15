@@ -2,6 +2,7 @@ use crate::types::Amount;
 use crate::types::ClientId;
 use crate::types::TransactionId;
 use serde::Deserialize;
+use std::fmt;
 
 #[derive(Deserialize)]
 #[serde(try_from = "RawRecord")]
@@ -23,9 +24,29 @@ struct RawRecord {
     amount: Option<Amount>,
 }
 
-#[derive(Deserialize, Debug)]
+/// Why a well-formed CSV row is still not a valid operation.
+#[derive(Debug, PartialEq)]
+pub enum InvalidOperation {
+    /// Deposits and withdrawals must move a strictly positive amount.
+    NonPositiveAmount,
+    /// Deposits and withdrawals must carry an amount.
+    MissingAmount(RawKind),
+}
+
+impl fmt::Display for InvalidOperation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NonPositiveAmount => f.write_str("amount can't be less than/equal to zero"),
+            Self::MissingAmount(kind) => write!(f, "{kind:?} is missing an amount"),
+        }
+    }
+}
+
+impl std::error::Error for InvalidOperation {}
+
+#[derive(Deserialize, Debug, PartialEq)]
 #[serde(rename_all = "snake_case")]
-enum RawKind {
+pub enum RawKind {
     Deposit,
     Withdrawal,
     Dispute,
@@ -34,7 +55,7 @@ enum RawKind {
 }
 
 impl TryFrom<RawRecord> for Operation {
-    type Error = String;
+    type Error = InvalidOperation;
 
     fn try_from(r: RawRecord) -> Result<Self, Self::Error> {
         let RawRecord {
@@ -47,7 +68,7 @@ impl TryFrom<RawRecord> for Operation {
         Ok(match (kind, amount) {
             (RawKind::Deposit, Some(amount)) => {
                 if amount <= 0.into() {
-                    return Err("amount can't be less than/equal to zero".to_string());
+                    return Err(InvalidOperation::NonPositiveAmount);
                 }
 
                 Operation::Deposit(DepositData {
@@ -58,7 +79,7 @@ impl TryFrom<RawRecord> for Operation {
             }
             (RawKind::Withdrawal, Some(amount)) => {
                 if amount <= 0.into() {
-                    return Err("amount can't be less than/equal to zero".to_string());
+                    return Err(InvalidOperation::NonPositiveAmount);
                 }
 
                 Operation::Withdrawal(WithdrawalData {
@@ -82,7 +103,7 @@ impl TryFrom<RawRecord> for Operation {
                 transaction_id,
             }),
             (kind @ (RawKind::Deposit | RawKind::Withdrawal), None) => {
-                return Err(format!("{kind:?} is missing an amount"));
+                return Err(InvalidOperation::MissingAmount(kind));
             }
         })
     }

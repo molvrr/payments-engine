@@ -27,14 +27,14 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn process(&mut self, transaction: Operation) -> Result<(), ProcessingError> {
-        let client_id = transaction.client_id();
+    pub fn process(&mut self, operation: Operation) -> Result<(), ProcessingError> {
+        let client_id = operation.client_id();
         self.state
             .accounts
             .entry(client_id)
             .or_insert_with(|| Account::new(client_id));
 
-        match transaction {
+        match operation {
             Operation::Deposit(deposit_data) => deposit::run(
                 &mut self.state.transactions,
                 &mut self.state.accounts,

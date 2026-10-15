@@ -23,7 +23,7 @@ pub fn run(
     }
 
     if transaction.status != TransactionStatus::Completed
-        || transaction.kind != TransactionKind::Credit
+        || transaction.kind != TransactionKind::Deposit
     {
         return Err(ProcessingError::NotDisputable(dispute_data.transaction_id));
     }

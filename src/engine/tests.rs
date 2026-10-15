@@ -125,10 +125,10 @@ fn snapshot(engine: &Engine) -> (Vec<AccountRow>, Vec<TransactionRow>) {
     let mut transactions: Vec<TransactionRow> = engine
         .state
         .transactions
-        .values()
-        .map(|t| {
+        .iter()
+        .map(|(id, t)| {
             (
-                t.id.0,
+                id.0,
                 t.client_id.0,
                 t.amount,
                 format!("{:?}/{:?}", t.kind, t.status),
@@ -396,7 +396,7 @@ fn dispute_of_withdrawal_is_rejected() {
     );
     assert_eq!(
         engine.state.transactions[&TransactionId(2)].kind,
-        TransactionKind::Debit
+        TransactionKind::Withdrawal
     );
 }
 
@@ -669,17 +669,16 @@ fn spec_example() {
 fn assert_invariants(engine: &Engine) {
     let transactions = &engine.state.transactions;
 
-    for transaction in transactions.values() {
+    for (id, transaction) in transactions {
         assert!(
             engine.state.accounts.contains_key(&transaction.client_id),
-            "transactionsHaveAccounts: tx {} has no account",
-            transaction.id
+            "transactionsHaveAccounts: tx {id} has no account"
         );
         assert!(
             transaction.status == TransactionStatus::Completed
-                || transaction.kind == TransactionKind::Credit,
-            "onlyCreditsDisputed: tx {} is a {:?} in status {:?}",
-            transaction.id,
+                || transaction.kind == TransactionKind::Deposit,
+            "onlyDepositsDisputed: tx {} is a {:?} in status {:?}",
+            id,
             transaction.kind,
             transaction.status
         );
@@ -692,10 +691,10 @@ fn assert_invariants(engine: &Engine) {
         };
 
         let disputed = sum(&|t| t.status == TransactionStatus::Disputed);
-        let kept_credits = sum(&|t| {
-            t.kind == TransactionKind::Credit && t.status != TransactionStatus::ChargedBack
+        let kept_deposits = sum(&|t| {
+            t.kind == TransactionKind::Deposit && t.status != TransactionStatus::ChargedBack
         });
-        let debits = sum(&|t| t.kind == TransactionKind::Debit);
+        let withdrawals = sum(&|t| t.kind == TransactionKind::Withdrawal);
         let charged_back = own().any(|t| t.status == TransactionStatus::ChargedBack);
 
         assert_eq!(
@@ -705,7 +704,7 @@ fn assert_invariants(engine: &Engine) {
         );
         assert_eq!(
             account.total(),
-            kept_credits - debits,
+            kept_deposits - withdrawals,
             "totalMatchesLedger for client {}",
             account.id
         );

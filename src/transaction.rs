@@ -1,4 +1,4 @@
-use crate::types::{Amount, ClientId, TransactionId};
+use crate::types::{Amount, ClientId};
 
 #[derive(PartialEq, Debug)]
 pub enum TransactionStatus {
@@ -10,12 +10,11 @@ pub enum TransactionStatus {
 
 #[derive(PartialEq, Debug)]
 pub enum TransactionKind {
-    Debit,
-    Credit,
+    Deposit,
+    Withdrawal,
 }
 
 pub struct Transaction {
-    pub id: TransactionId,
     pub amount: Amount,
     pub status: TransactionStatus,
     pub client_id: ClientId,

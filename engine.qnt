@@ -7,7 +7,10 @@ module engine {
         | Resolve({client_id: int, transaction_id: int})
         | Chargeback({client_id: int, transaction_id: int})
     type TransactionStatus = Completed | Disputed | Resolved | ChargedBack
-    type TransactionKind = Credit | Debit
+    // Suffixed with Tx because Deposit/Withdrawal are already Operation variants.
+    type TransactionKind = DepositTx | WithdrawalTx
+    // id is redundant with the map key, but without it two equal transactions
+    // would collapse into one element of the Set built by clientTransactions.
     type Transaction = {id: int, amount: int, status: TransactionStatus, client_id: int, kind: TransactionKind}
 
     var accounts: int -> Account
@@ -72,7 +75,7 @@ module engine {
             | Dispute(d) => and {
                 owns(d.client_id, d.transaction_id),
                 transactions.get(d.transaction_id).status == Completed,
-                transactions.get(d.transaction_id).kind == Credit,
+                transactions.get(d.transaction_id).kind == DepositTx,
             }
             | Resolve(r) => and {
                 owns(r.client_id, r.transaction_id),
@@ -89,11 +92,11 @@ module engine {
         match (operation) {
             | Deposit(d) => all {
                 accounts' = accounts.put(d.client_id, {...acc, available: acc.available + d.amount}),
-                transactions' = transactions.put(d.transaction_id, {id: d.transaction_id, amount: d.amount, status: Completed, client_id: d.client_id, kind: Credit}),
+                transactions' = transactions.put(d.transaction_id, {id: d.transaction_id, amount: d.amount, status: Completed, client_id: d.client_id, kind: DepositTx}),
             }
             | Withdrawal(w) => all {
                 accounts' = accounts.put(w.client_id, {...acc, available: acc.available - w.amount}),
-                transactions' = transactions.put(w.transaction_id, {id: w.transaction_id, amount: w.amount, status: Completed, client_id: w.client_id, kind: Debit}),
+                transactions' = transactions.put(w.transaction_id, {id: w.transaction_id, amount: w.amount, status: Completed, client_id: w.client_id, kind: WithdrawalTx}),
             }
             | Dispute(d) => {
                 val amount = transactions.get(d.transaction_id).amount
@@ -154,8 +157,8 @@ module engine {
     val totalMatchesLedger = accounts.keys().forall(id => {
         val txs = clientTransactions(id)
         total(accounts.get(id)) ==
-            sumAmounts(txs.filter(t => t.kind == Credit and t.status != ChargedBack))
-            - sumAmounts(txs.filter(t => t.kind == Debit))
+            sumAmounts(txs.filter(t => t.kind == DepositTx and t.status != ChargedBack))
+            - sumAmounts(txs.filter(t => t.kind == WithdrawalTx))
     })
 
     val lockedIffChargedBack = accounts.keys().forall(id =>
@@ -164,8 +167,8 @@ module engine {
 
     val noNegativeHeld = accounts.keys().forall(id => accounts.get(id).held >= 0)
 
-    val onlyCreditsDisputed = transactions.keys().forall(id =>
-        transactions.get(id).status != Completed implies transactions.get(id).kind == Credit
+    val onlyDepositsDisputed = transactions.keys().forall(id =>
+        transactions.get(id).status != Completed implies transactions.get(id).kind == DepositTx
     )
 
     val transactionsHaveAccounts = transactions.keys().forall(id =>
@@ -177,7 +180,7 @@ module engine {
         totalMatchesLedger,
         lockedIffChargedBack,
         noNegativeHeld,
-        onlyCreditsDisputed,
+        onlyDepositsDisputed,
         transactionsHaveAccounts,
     }
 }

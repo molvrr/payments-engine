@@ -42,11 +42,10 @@ pub fn run(
     transactions.insert(
         transaction_id,
         Transaction {
-            id: transaction_id,
             amount,
             status: TransactionStatus::Completed,
             client_id,
-            kind: TransactionKind::Credit,
+            kind: TransactionKind::Deposit,
         },
     );
 
