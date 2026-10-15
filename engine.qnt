@@ -47,57 +47,86 @@ module engine {
     action resolve(client_id, transaction_id) = process(Resolve({client_id: client_id, transaction_id: transaction_id}))
     action chargeback(client_id, transaction_id) = process(Chargeback({client_id: client_id, transaction_id: transaction_id}))
 
-    action process(operation: Operation): bool = {
+    def clientOf(operation: Operation): int =
         match (operation) {
-            | Deposit(d) => all {
+            | Deposit(d) => d.client_id
+            | Withdrawal(w) => w.client_id
+            | Dispute(d) => d.client_id
+            | Resolve(r) => r.client_id
+            | Chargeback(c) => c.client_id
+        }
+
+    def accepted(operation: Operation): bool =
+        match (operation) {
+            | Deposit(d) => and {
                 d.amount > 0,
                 not(isRecorded(d.transaction_id)),
                 not(account(d.client_id).locked),
-                accounts' = accounts.put(d.client_id, {...account(d.client_id), available: account(d.client_id).available + d.amount}),
-                transactions' = transactions.put(d.transaction_id, {id: d.transaction_id, amount: d.amount, status: Completed, client_id: d.client_id, kind: Credit}),
-                records' = records.append(operation)
             }
-            | Withdrawal(w) => all {
+            | Withdrawal(w) => and {
                 w.amount > 0,
                 not(isRecorded(w.transaction_id)),
                 not(account(w.client_id).locked),
                 account(w.client_id).available >= w.amount,
-                accounts' = accounts.put(w.client_id, {...account(w.client_id), available: account(w.client_id).available - w.amount}),
-                transactions' = transactions.put(w.transaction_id, {id: w.transaction_id, amount: w.amount, status: Completed, client_id: w.client_id, kind: Debit}),
-                records' = records.append(operation)
             }
-            | Dispute(d) => all {
+            | Dispute(d) => and {
                 owns(d.client_id, d.transaction_id),
                 transactions.get(d.transaction_id).status == Completed,
                 transactions.get(d.transaction_id).kind == Credit,
-                val amount = transactions.get(d.transaction_id).amount
-                all {
-                    accounts' = accounts.setBy(d.client_id, old => {...old, available: old.available - amount, held: old.held + amount}),
-                    transactions' = transactions.setBy(d.transaction_id, old => {...old, status: Disputed}),
-                    records' = records.append(operation)
-                }
             }
-            | Resolve(r) => all {
+            | Resolve(r) => and {
                 owns(r.client_id, r.transaction_id),
                 transactions.get(r.transaction_id).status == Disputed,
-                val amount = transactions.get(r.transaction_id).amount
-                all {
-                    accounts' = accounts.setBy(r.client_id, old => {...old, available: old.available + amount, held: old.held - amount}),
-                    transactions' = transactions.setBy(r.transaction_id, old => {...old, status: Resolved}),
-                    records' = records.append(operation)
-                }
             }
-            | Chargeback(c) => all {
+            | Chargeback(c) => and {
                 owns(c.client_id, c.transaction_id),
                 transactions.get(c.transaction_id).status == Disputed,
+            }
+        }
+
+    action apply(operation: Operation): bool = {
+        val acc = account(clientOf(operation))
+        match (operation) {
+            | Deposit(d) => all {
+                accounts' = accounts.put(d.client_id, {...acc, available: acc.available + d.amount}),
+                transactions' = transactions.put(d.transaction_id, {id: d.transaction_id, amount: d.amount, status: Completed, client_id: d.client_id, kind: Credit}),
+            }
+            | Withdrawal(w) => all {
+                accounts' = accounts.put(w.client_id, {...acc, available: acc.available - w.amount}),
+                transactions' = transactions.put(w.transaction_id, {id: w.transaction_id, amount: w.amount, status: Completed, client_id: w.client_id, kind: Debit}),
+            }
+            | Dispute(d) => {
+                val amount = transactions.get(d.transaction_id).amount
+                all {
+                    accounts' = accounts.put(d.client_id, {...acc, available: acc.available - amount, held: acc.held + amount}),
+                    transactions' = transactions.setBy(d.transaction_id, old => {...old, status: Disputed}),
+                }
+            }
+            | Resolve(r) => {
+                val amount = transactions.get(r.transaction_id).amount
+                all {
+                    accounts' = accounts.put(r.client_id, {...acc, available: acc.available + amount, held: acc.held - amount}),
+                    transactions' = transactions.setBy(r.transaction_id, old => {...old, status: Resolved}),
+                }
+            }
+            | Chargeback(c) => {
                 val amount = transactions.get(c.transaction_id).amount
                 all {
-                    accounts' = accounts.setBy(c.client_id, old => {...old, held: old.held - amount, locked: true}),
+                    accounts' = accounts.put(c.client_id, {...acc, held: acc.held - amount, locked: true}),
                     transactions' = transactions.setBy(c.transaction_id, old => {...old, status: ChargedBack}),
-                    records' = records.append(operation)
                 }
             }
         }
+    }
+
+    action reject(operation: Operation): bool = all {
+        accounts' = accounts.put(clientOf(operation), account(clientOf(operation))),
+        transactions' = transactions,
+    }
+
+    action process(operation: Operation): bool = all {
+        if (accepted(operation)) apply(operation) else reject(operation),
+        records' = records.append(operation),
     }
 
     action step = {

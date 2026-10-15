@@ -11,6 +11,7 @@ use crate::account::Account;
 use crate::operation::Operation;
 use crate::transaction::Transaction;
 use crate::types::{ClientId, TransactionId};
+use error::ProcessingError;
 
 pub struct State {
     pub accounts: HashMap<ClientId, Account>,
@@ -30,8 +31,6 @@ pub struct Engine {
     pub state: State,
 }
 
-pub use error::ProcessingError;
-
 impl Engine {
     pub fn new() -> Self {
         Self {
@@ -39,8 +38,6 @@ impl Engine {
         }
     }
 
-    /// Every operation creates its client's account if it does not exist yet,
-    /// even when the operation itself is rejected.
     pub fn process(&mut self, transaction: Operation) -> Result<(), ProcessingError> {
         let client_id = transaction.client_id();
         self.state
