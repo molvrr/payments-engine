@@ -11,33 +11,20 @@ use crate::account::Account;
 use crate::operation::Operation;
 use crate::transaction::Transaction;
 use crate::types::{ClientId, TransactionId};
-use error::ProcessingError;
+pub use error::ProcessingError;
 
+#[derive(Default)]
 pub struct State {
     pub accounts: HashMap<ClientId, Account>,
     pub transactions: HashMap<TransactionId, Transaction>,
 }
 
-impl State {
-    pub fn new() -> Self {
-        Self {
-            accounts: HashMap::new(),
-            transactions: HashMap::new(),
-        }
-    }
-}
-
+#[derive(Default)]
 pub struct Engine {
     pub state: State,
 }
 
 impl Engine {
-    pub fn new() -> Self {
-        Self {
-            state: State::new(),
-        }
-    }
-
     pub fn process(&mut self, transaction: Operation) -> Result<(), ProcessingError> {
         let client_id = transaction.client_id();
         self.state

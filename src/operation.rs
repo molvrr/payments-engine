@@ -47,7 +47,7 @@ impl TryFrom<RawRecord> for Operation {
         Ok(match (kind, amount) {
             (RawKind::Deposit, Some(amount)) => {
                 if amount <= 0.into() {
-                    return Err(format!("amount can't be less than/equal to zero"));
+                    return Err("amount can't be less than/equal to zero".to_string());
                 }
 
                 Operation::Deposit(DepositData {
@@ -58,7 +58,7 @@ impl TryFrom<RawRecord> for Operation {
             }
             (RawKind::Withdrawal, Some(amount)) => {
                 if amount <= 0.into() {
-                    return Err(format!("amount can't be less than/equal to zero"));
+                    return Err("amount can't be less than/equal to zero".to_string());
                 }
 
                 Operation::Withdrawal(WithdrawalData {
