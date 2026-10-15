@@ -56,7 +56,7 @@ The same invariants are also checked in Rust (see [Correctness and testing](#cor
 - **Randomized invariant test.** Runs 500 seeded random sequences of 100 operations each over a small set of client and transaction ids, so disputes, resolves and chargebacks often hit real transactions. After every step it checks the invariants listed above, the same ones as `everyInvariant` in `engine.qnt`. It uses a small built-in random number generator, so it needs no extra dependencies and a failing seed can be rerun.
 - **Parsing tests** (`src/operation.rs`): whitespace, a missing trailing amount column, four-decimal precision, maximum ids, invalid amounts and types, and malformed rows not stopping the rest of the file.
 - **Output tests** (`src/csv_io.rs`): the format of the accounts CSV.
-- **CLI tests** ([`tests/cli.rs`](tests/cli.rs)). These run the real binary on the input files in [`tests/fixtures/`](tests/fixtures) and compare against each case's `expected.csv`. The comparison ignores spacing, decimal formatting and row order, as the spec allows. The cases are: the spec example, dispute/resolve, chargeback, references to missing or wrong transactions, malformed rows, and precision.
+- **CLI tests** ([`tests/cli.rs`](tests/cli.rs)). These run the real binary on the input files in [`tests/fixtures/`](tests/fixtures) and compare against each case's `expected.csv`. The comparison ignores spacing, decimal formatting and row order, as the spec allows. The cases are: the spec example, dispute/resolve, chargeback, references to missing or wrong transactions, malformed rows, and precision. Another CLI test feeds 500 rejected withdrawals and checks that every one is reported on stderr.
 
 ## Error handling and safety
 - **Three error types:**

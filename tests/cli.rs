@@ -130,6 +130,36 @@ fn rejected_rows_are_reported_on_stderr_not_stdout() {
     );
 }
 
+/// Every rejected operation is reported, even with many of them (stderr is
+/// buffered, so this also checks that nothing is lost at exit).
+#[test]
+fn every_rejected_operation_is_reported_on_stderr() {
+    const REJECTED: usize = 500;
+    let mut input = String::from("type,client,tx,amount\ndeposit,1,1,1.0\n");
+    for tx in 2..2 + REJECTED {
+        input.push_str(&format!("withdrawal,1,{tx},5.0\n"));
+    }
+    let path = format!("{}/many_rejections.csv", env!("CARGO_TARGET_TMPDIR"));
+    std::fs::write(&path, input).expect("failed to write the input file");
+
+    let output = run_engine(&[&path]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(
+        stderr
+            .lines()
+            .filter(|line| line.contains("insufficient funds"))
+            .count(),
+        REJECTED
+    );
+    assert_eq!(
+        canonical_accounts(&stdout),
+        canonical_accounts("client,available,held,total,locked\n1,1,0,1,false\n")
+    );
+}
+
 #[test]
 fn missing_argument_fails_with_usage() {
     let output = run_engine(&[]);

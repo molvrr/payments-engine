@@ -199,39 +199,27 @@ mod tests {
         );
     }
 
+    /// Disputes, resolves and chargebacks parse the same whether the amount
+    /// column is missing, empty or filled in (the amount is ignored).
     #[test]
-    fn parses_dispute_resolve_and_chargeback_with_empty_amount() {
-        assert!(matches!(
-            parse_ok("dispute,1,2,"),
-            Operation::Dispute(DisputeData {
-                client_id: ClientId(1),
-                transaction_id: TransactionId(2)
-            })
-        ));
-        assert!(matches!(
-            parse_ok("resolve,1,2,"),
-            Operation::Resolve(ResolveData {
-                client_id: ClientId(1),
-                transaction_id: TransactionId(2)
-            })
-        ));
-        assert!(matches!(
-            parse_ok("chargeback,1,2,"),
-            Operation::Chargeback(ChargebackData {
-                client_id: ClientId(1),
-                transaction_id: TransactionId(2)
-            })
-        ));
-    }
+    fn dispute_resolve_and_chargeback_ignore_the_amount_column() {
+        let reference = (ClientId(1), TransactionId(2));
+        for amount_column in ["", ",", ",1.0"] {
+            let row = |kind: &str| format!("{kind},1,2{amount_column}");
 
-    #[test]
-    fn accepts_rows_without_the_trailing_amount_column() {
-        assert!(matches!(parse_ok("dispute,1,2"), Operation::Dispute(_)));
-        assert!(matches!(parse_ok("resolve,1,2"), Operation::Resolve(_)));
-        assert!(matches!(
-            parse_ok("chargeback,1,2"),
-            Operation::Chargeback(_)
-        ));
+            let Operation::Dispute(d) = parse_ok(&row("dispute")) else {
+                panic!("expected a dispute for {amount_column:?}");
+            };
+            let Operation::Resolve(r) = parse_ok(&row("resolve")) else {
+                panic!("expected a resolve for {amount_column:?}");
+            };
+            let Operation::Chargeback(c) = parse_ok(&row("chargeback")) else {
+                panic!("expected a chargeback for {amount_column:?}");
+            };
+            assert_eq!((d.client_id, d.transaction_id), reference);
+            assert_eq!((r.client_id, r.transaction_id), reference);
+            assert_eq!((c.client_id, c.transaction_id), reference);
+        }
     }
 
     #[test]
@@ -278,31 +266,6 @@ mod tests {
         assert!(parse_err("deposit,1,1,-1.0").contains("less than/equal to zero"));
         assert!(parse_err("withdrawal,1,1,0.0000").contains("less than/equal to zero"));
         assert!(parse_err("withdrawal,1,1,-0.5").contains("less than/equal to zero"));
-    }
-
-    #[test]
-    fn ignores_amount_on_dispute_resolve_and_chargeback() {
-        assert!(matches!(
-            parse_ok("dispute,1,2,1.0"),
-            Operation::Dispute(DisputeData {
-                client_id: ClientId(1),
-                transaction_id: TransactionId(2)
-            })
-        ));
-        assert!(matches!(
-            parse_ok("resolve,1,2,1.0"),
-            Operation::Resolve(ResolveData {
-                client_id: ClientId(1),
-                transaction_id: TransactionId(2)
-            })
-        ));
-        assert!(matches!(
-            parse_ok("chargeback,1,2,1.0"),
-            Operation::Chargeback(ChargebackData {
-                client_id: ClientId(1),
-                transaction_id: TransactionId(2)
-            })
-        ));
     }
 
     #[test]

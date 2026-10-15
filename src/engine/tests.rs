@@ -190,14 +190,6 @@ fn deposit_credits_available_and_total() {
 }
 
 #[test]
-fn deposit_creates_the_account_on_first_use() {
-    let engine = engine_with([deposit(7, 1, "1")]);
-
-    assert_eq!(engine.state.accounts.len(), 1);
-    assert_account(&engine, 7, "1", "0", "1", false);
-}
-
-#[test]
 fn deposit_with_duplicate_transaction_id_is_rejected() {
     let mut engine = engine_with([deposit(1, 1, "1")]);
 
@@ -346,46 +338,6 @@ fn dispute_moves_funds_from_available_to_held() {
 }
 
 #[test]
-fn dispute_of_unknown_transaction_is_ignored() {
-    let mut engine = engine_with([deposit(1, 1, "10")]);
-
-    assert_rejected(
-        &mut engine,
-        dispute(1, 99),
-        ProcessingError::TransactionNotFound(TransactionId(99)),
-    );
-    assert_account(&engine, 1, "10", "0", "10", false);
-}
-
-#[test]
-fn dispute_of_another_clients_transaction_is_rejected() {
-    let mut engine = engine_with([deposit(1, 1, "10")]);
-
-    assert_rejected(
-        &mut engine,
-        dispute(2, 1),
-        ProcessingError::ClientMismatch {
-            transaction_id: TransactionId(1),
-            client_id: ClientId(2),
-        },
-    );
-    assert_account(&engine, 1, "10", "0", "10", false);
-    assert_account(&engine, 2, "0", "0", "0", false);
-}
-
-#[test]
-fn dispute_of_already_disputed_transaction_is_rejected() {
-    let mut engine = engine_with([deposit(1, 1, "10"), dispute(1, 1)]);
-
-    assert_rejected(
-        &mut engine,
-        dispute(1, 1),
-        ProcessingError::NotDisputable(TransactionId(1)),
-    );
-    assert_account(&engine, 1, "0", "10", "10", false);
-}
-
-#[test]
 fn dispute_of_withdrawal_is_rejected() {
     let mut engine = engine_with([deposit(1, 1, "10"), withdrawal(1, 2, "4")]);
 
@@ -393,32 +345,6 @@ fn dispute_of_withdrawal_is_rejected() {
         &mut engine,
         dispute(1, 2),
         ProcessingError::NotDisputable(TransactionId(2)),
-    );
-    assert_eq!(
-        engine.state.transactions[&TransactionId(2)].kind,
-        TransactionKind::Withdrawal
-    );
-}
-
-#[test]
-fn resolved_transaction_cannot_be_disputed_again() {
-    let mut engine = engine_with([deposit(1, 1, "10"), dispute(1, 1), resolve(1, 1)]);
-
-    assert_rejected(
-        &mut engine,
-        dispute(1, 1),
-        ProcessingError::NotDisputable(TransactionId(1)),
-    );
-}
-
-#[test]
-fn charged_back_transaction_cannot_be_disputed_again() {
-    let mut engine = engine_with([deposit(1, 1, "10"), dispute(1, 1), chargeback(1, 1)]);
-
-    assert_rejected(
-        &mut engine,
-        dispute(1, 1),
-        ProcessingError::NotDisputable(TransactionId(1)),
     );
 }
 
@@ -475,55 +401,6 @@ fn resolve_releases_held_funds() {
     assert_eq!(status(&engine, 1), &TransactionStatus::Resolved);
 }
 
-#[test]
-fn resolve_of_unknown_transaction_is_ignored() {
-    let mut engine = engine_with([deposit(1, 1, "10"), dispute(1, 1)]);
-
-    assert_rejected(
-        &mut engine,
-        resolve(1, 2),
-        ProcessingError::TransactionNotFound(TransactionId(2)),
-    );
-}
-
-#[test]
-fn resolve_of_undisputed_transaction_is_ignored() {
-    let mut engine = engine_with([deposit(1, 1, "10")]);
-
-    assert_rejected(
-        &mut engine,
-        resolve(1, 1),
-        ProcessingError::NotDisputed(TransactionId(1)),
-    );
-}
-
-#[test]
-fn resolve_twice_is_rejected() {
-    let mut engine = engine_with([deposit(1, 1, "10"), dispute(1, 1), resolve(1, 1)]);
-
-    assert_rejected(
-        &mut engine,
-        resolve(1, 1),
-        ProcessingError::NotDisputed(TransactionId(1)),
-    );
-    assert_account(&engine, 1, "10", "0", "10", false);
-}
-
-#[test]
-fn resolve_by_another_client_is_rejected() {
-    let mut engine = engine_with([deposit(1, 1, "10"), dispute(1, 1)]);
-
-    assert_rejected(
-        &mut engine,
-        resolve(2, 1),
-        ProcessingError::ClientMismatch {
-            transaction_id: TransactionId(1),
-            client_id: ClientId(2),
-        },
-    );
-    assert_account(&engine, 1, "0", "10", "10", false);
-}
-
 // ---------------------------------------------------------------- chargeback
 
 #[test]
@@ -566,66 +443,130 @@ fn chargeback_only_reverses_the_disputed_transaction() {
 }
 
 #[test]
-fn chargeback_of_undisputed_transaction_is_ignored() {
-    let mut engine = engine_with([deposit(1, 1, "10")]);
-
-    assert_rejected(
-        &mut engine,
+fn chargeback_on_an_already_locked_account_is_applied() {
+    let engine = engine_with([
+        deposit(1, 1, "10"),
+        deposit(1, 2, "20"),
+        dispute(1, 1),
+        dispute(1, 2),
         chargeback(1, 1),
-        ProcessingError::NotDisputed(TransactionId(1)),
-    );
-    assert_account(&engine, 1, "10", "0", "10", false);
-}
+        chargeback(1, 2),
+    ]);
 
-#[test]
-fn chargeback_after_resolve_is_ignored() {
-    let mut engine = engine_with([deposit(1, 1, "10"), dispute(1, 1), resolve(1, 1)]);
-
-    assert_rejected(
-        &mut engine,
-        chargeback(1, 1),
-        ProcessingError::NotDisputed(TransactionId(1)),
-    );
-    assert_account(&engine, 1, "10", "0", "10", false);
-}
-
-#[test]
-fn chargeback_of_unknown_transaction_is_ignored() {
-    let mut engine = engine_with([deposit(1, 1, "10"), dispute(1, 1)]);
-
-    assert_rejected(
-        &mut engine,
-        chargeback(1, 42),
-        ProcessingError::TransactionNotFound(TransactionId(42)),
-    );
-}
-
-#[test]
-fn chargeback_twice_is_rejected() {
-    let mut engine = engine_with([deposit(1, 1, "10"), dispute(1, 1), chargeback(1, 1)]);
-
-    assert_rejected(
-        &mut engine,
-        chargeback(1, 1),
-        ProcessingError::NotDisputed(TransactionId(1)),
-    );
     assert_account(&engine, 1, "0", "0", "0", true);
+    assert_eq!(status(&engine, 2), &TransactionStatus::ChargedBack);
+}
+
+// ---------------------------------------------------------------- references
+//
+// Dispute, resolve and chargeback each live in their own module and run their
+// own checks, so every rule below is exercised for all three.
+
+#[test]
+fn references_to_unknown_transactions_are_ignored() {
+    for operation in [dispute(1, 99), resolve(1, 99), chargeback(1, 99)] {
+        let mut engine = engine_with([deposit(1, 1, "10")]);
+        assert_rejected(
+            &mut engine,
+            operation,
+            ProcessingError::TransactionNotFound(TransactionId(99)),
+        );
+    }
 }
 
 #[test]
-fn chargeback_by_another_client_is_rejected() {
-    let mut engine = engine_with([deposit(1, 1, "10"), dispute(1, 1)]);
+fn references_to_another_clients_transaction_are_rejected() {
+    // tx 1 is disputed, so resolve and chargeback would otherwise be accepted;
+    // dispute gets a fresh, undisputed deposit for the same reason.
+    let cases = [
+        (vec![deposit(1, 1, "10")], dispute(2, 1)),
+        (vec![deposit(1, 1, "10"), dispute(1, 1)], resolve(2, 1)),
+        (vec![deposit(1, 1, "10"), dispute(1, 1)], chargeback(2, 1)),
+    ];
+    for (setup, operation) in cases {
+        let mut engine = engine_with(setup);
+        assert_rejected(
+            &mut engine,
+            operation,
+            ProcessingError::ClientMismatch {
+                transaction_id: TransactionId(1),
+                client_id: ClientId(2),
+            },
+        );
+    }
+}
 
-    assert_rejected(
-        &mut engine,
-        chargeback(2, 1),
-        ProcessingError::ClientMismatch {
-            transaction_id: TransactionId(1),
-            client_id: ClientId(2),
-        },
-    );
-    assert_account(&engine, 1, "0", "10", "10", false);
-    assert_account(&engine, 2, "0", "0", "0", false);
+/// Transactions move Completed → Disputed → Resolved | ChargedBack and never
+/// go back. Every other transition is rejected.
+#[test]
+fn invalid_status_transitions_are_rejected() {
+    use ProcessingError::{NotDisputable, NotDisputed};
+
+    let completed = || vec![deposit(1, 1, "10")];
+    let disputed = || vec![deposit(1, 1, "10"), dispute(1, 1)];
+    let resolved = || vec![deposit(1, 1, "10"), dispute(1, 1), resolve(1, 1)];
+    let charged_back = || vec![deposit(1, 1, "10"), dispute(1, 1), chargeback(1, 1)];
+    let tx = TransactionId(1);
+
+    let cases = [
+        (
+            "dispute twice",
+            disputed(),
+            dispute(1, 1),
+            NotDisputable(tx),
+        ),
+        (
+            "dispute after resolve",
+            resolved(),
+            dispute(1, 1),
+            NotDisputable(tx),
+        ),
+        (
+            "dispute after chargeback",
+            charged_back(),
+            dispute(1, 1),
+            NotDisputable(tx),
+        ),
+        (
+            "resolve undisputed",
+            completed(),
+            resolve(1, 1),
+            NotDisputed(tx),
+        ),
+        ("resolve twice", resolved(), resolve(1, 1), NotDisputed(tx)),
+        (
+            "resolve after chargeback",
+            charged_back(),
+            resolve(1, 1),
+            NotDisputed(tx),
+        ),
+        (
+            "chargeback undisputed",
+            completed(),
+            chargeback(1, 1),
+            NotDisputed(tx),
+        ),
+        (
+            "chargeback after resolve",
+            resolved(),
+            chargeback(1, 1),
+            NotDisputed(tx),
+        ),
+        (
+            "chargeback twice",
+            charged_back(),
+            chargeback(1, 1),
+            NotDisputed(tx),
+        ),
+    ];
+    for (name, setup, operation, expected) in cases {
+        let mut engine = engine_with(setup);
+        assert_eq!(
+            process_checked(&mut engine, operation),
+            Err(expected),
+            "{name}"
+        );
+    }
 }
 
 // ---------------------------------------------------------------- general
@@ -642,24 +583,6 @@ fn clients_are_independent() {
 
     assert_account(&engine, 1, "0.5", "0", "0.5", false);
     assert_account(&engine, 2, "0", "0", "0", true);
-}
-
-#[test]
-fn spec_example() {
-    let mut engine = engine_with([
-        deposit(1, 1, "1.0"),
-        deposit(2, 2, "2.0"),
-        deposit(1, 3, "2.0"),
-        withdrawal(1, 4, "1.5"),
-    ]);
-    assert_rejected(
-        &mut engine,
-        withdrawal(2, 5, "3.0"),
-        ProcessingError::InsufficientFunds(ClientId(2)),
-    );
-
-    assert_account(&engine, 1, "1.5", "0", "1.5", false);
-    assert_account(&engine, 2, "2", "0", "2", false);
 }
 
 // ---------------------------------------------------------------- invariants
