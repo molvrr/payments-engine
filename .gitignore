@@ -1,2 +1,4 @@
 /target
 _apalache-out/
+transactions.csv
+accounts.csv
