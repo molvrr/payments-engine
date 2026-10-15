@@ -39,7 +39,15 @@ impl Engine {
         }
     }
 
+    /// Every operation creates its client's account if it does not exist yet,
+    /// even when the operation itself is rejected.
     pub fn process(&mut self, transaction: Operation) -> Result<(), ProcessingError> {
+        let client_id = transaction.client_id();
+        self.state
+            .accounts
+            .entry(client_id)
+            .or_insert_with(|| Account::new(client_id));
+
         match transaction {
             Operation::Deposit(deposit_data) => deposit::run(
                 &mut self.state.transactions,

@@ -22,8 +22,8 @@ pub fn run(
     }
 
     let account = accounts
-        .entry(client_id)
-        .or_insert_with(|| Account::new(client_id));
+        .get_mut(&client_id)
+        .ok_or(ProcessingError::AccountNotFound(client_id))?;
 
     if account.locked {
         return Err(ProcessingError::LockedAccount(client_id));
@@ -33,7 +33,6 @@ pub fn run(
         return Err(ProcessingError::InsufficientFunds(client_id));
     }
 
-    // Cannot underflow: amount > 0 and available >= amount.
     account.available -= amount;
 
     transactions.insert(

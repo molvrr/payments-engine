@@ -23,10 +23,10 @@ pub enum ProcessingError {
     NotDisputable(TransactionId),
     /// Resolve/chargeback reference a transaction that is not under dispute.
     NotDisputed(TransactionId),
-    /// A stored transaction references an account that does not exist.
+    /// The operation's account does not exist.
     ///
-    /// The engine never produces this state (accounts are created before
-    /// their first transaction is stored), so seeing this error means an
+    /// The engine never produces this state (`Engine::process` creates the
+    /// account before applying any operation), so seeing this error means an
     /// internal invariant was broken. The engine reports it instead of
     /// panicking; it is up to the consumer to decide whether to abort or to
     /// log and keep going.

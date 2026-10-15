@@ -44,23 +44,29 @@ impl TryFrom<RawRecord> for Operation {
             amount,
         } = r;
 
-        if let Some(a) = amount {
-            if a <= 0.into() {
-                return Err(format!("Amount can't be less than/equal to zero"));
-            }
-        }
-
         Ok(match (kind, amount) {
-            (RawKind::Deposit, Some(amount)) => Operation::Deposit(DepositData {
-                client_id,
-                transaction_id,
-                amount,
-            }),
-            (RawKind::Withdrawal, Some(amount)) => Operation::Withdrawal(WithdrawalData {
-                client_id,
-                transaction_id,
-                amount,
-            }),
+            (RawKind::Deposit, Some(amount)) => {
+                if amount <= 0.into() {
+                    return Err(format!("amount can't be less than/equal to zero"));
+                }
+
+                Operation::Deposit(DepositData {
+                    client_id,
+                    transaction_id,
+                    amount,
+                })
+            }
+            (RawKind::Withdrawal, Some(amount)) => {
+                if amount <= 0.into() {
+                    return Err(format!("amount can't be less than/equal to zero"));
+                }
+
+                Operation::Withdrawal(WithdrawalData {
+                    client_id,
+                    transaction_id,
+                    amount,
+                })
+            }
             (RawKind::Dispute, None) => Operation::Dispute(DisputeData {
                 client_id,
                 transaction_id,
@@ -78,6 +84,18 @@ impl TryFrom<RawRecord> for Operation {
             }
             (kind, Some(_)) => return Err(format!("{kind:?} must not have an amount")),
         })
+    }
+}
+
+impl Operation {
+    pub fn client_id(&self) -> ClientId {
+        match self {
+            Operation::Deposit(d) => d.client_id,
+            Operation::Withdrawal(w) => w.client_id,
+            Operation::Dispute(d) => d.client_id,
+            Operation::Resolve(r) => r.client_id,
+            Operation::Chargeback(c) => c.client_id,
+        }
     }
 }
 
