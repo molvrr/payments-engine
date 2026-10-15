@@ -17,7 +17,7 @@ CSV rows ──► csv_io::read_operations ──► Operation ──► Engine:
               (streaming, one row          (validated     (pure state
                at a time)                   at parse time)  machine)
 ```
-- **Invalid rows are rejected at parse time.** `Operation` is built from the raw row through `TryFrom`. Deposits and withdrawals must have a strictly positive amount. Disputes, resolves and chargebacks refer to an existing transaction, so any amount on them is ignored. A malformed row is rejected before it reaches the engine, so the engine never has to handle one.
+- **Invalid rows are rejected at parse time.** `Operation` is built from the raw row through `TryFrom`, which fails with an `InvalidOperation` error. Deposits and withdrawals must have a strictly positive amount. Disputes, resolves and chargebacks refer to an existing transaction, so any amount on them is ignored. A malformed row is rejected before it reaches the engine, so the engine never has to handle one.
 - **Separate id types.** `ClientId(u16)` and `TransactionId(u32)` are distinct types, so one can't be passed where the other is expected.
 - **Exact decimal amounts.** Amounts use `rust_decimal::Decimal`, never floats, so binary approximations don't cause accumulating rounding errors.
 - **One module per operation.** Each operation lives in its own file under `src/engine/` (`deposit.rs`, `withdrawal.rs`, `dispute.rs`, `resolve.rs`, `chargeback.rs`). Each one validates first and changes state only if every check passes.
@@ -59,16 +59,18 @@ The same invariants are also checked in Rust (see [Correctness and testing](#cor
 - **CLI tests** ([`tests/cli.rs`](tests/cli.rs)). These run the real binary on the input files in [`tests/fixtures/`](tests/fixtures) and compare against each case's `expected.csv`. The comparison ignores spacing, decimal formatting and row order, as the spec allows. The cases are: the spec example, dispute/resolve, chargeback, references to missing or wrong transactions, malformed rows, and precision.
 
 ## Error handling and safety
-- **Two error types:**
+- **Three error types:**
   - `CsvIoError` (can't open the input, can't write the output) is fatal. The program prints it and exits with a non-zero code.
+  - `InvalidOperation` (a well-formed row that isn't a valid operation, e.g. a deposit with no amount or a non-positive amount) is per row. Together with CSV errors (unknown type, out-of-range ids, unparsable amount), it makes a row malformed.
   - `ProcessingError` (a rejected operation) is per operation. It is reported on stderr and processing continues with the next row. A rejected operation leaves the engine's state unchanged.
 - **Malformed rows** are reported and skipped. The rest of the file is still processed.
+- **Error reports are buffered.** stderr is locked once and wrapped in a `BufWriter`, so a file with many bad rows doesn't pay one system call per message. A failure to write to stderr is ignored on purpose: losing a diagnostic must not stop processing or change the accounts written to stdout.
 - **No panics on bad input.** Overflow is checked wherever it can happen: a deposit can overflow `available` or `total`, and a dispute can overflow `held` once `available` is negative. Those cases return `ProcessingError::Overflow`. Resolve and chargeback only move or remove funds already counted in `held`, so they can't overflow.
 - **Broken invariants are reported, not panicked on.** `AccountNotFound` should never happen, because the engine creates the account first. If it ever did, the engine returns it as an error instead of panicking.
 - **No `unsafe`, and no `unwrap`/`expect` outside tests.**
 
 ## Efficiency
-- **Streaming:** rows are read and processed one at a time. The input file is never fully loaded into memory.
+- **Streaming:** rows are read and processed one at a time. The input file is never fully loaded into memory. Error messages are buffered too; on a 3M-row file with ~350k rejected rows this cut the run time from 5.6s to 1.7s.
 - **Memory:** accounts are bounded by u16 (65,536 clients). Transactions are the real cost: every deposit and withdrawal is kept so it can be disputed later, which can reach about 4 billion entries with u32 ids. Possible improvements: keep only deposits (the only disputable kind), or move old transactions to disk.
 - **Sans-IO:** the engine does no I/O. It only turns operations into state changes. Reading and writing are kept at the edges (`csv_io`, `main.rs`). `csv_io::operations_from_reader` accepts any `std::io::Read`, so the same engine works with a file, stdin, a test buffer, or a socket, and supporting a new source only means writing a new reader.
 - **Concurrent TCP streams:** because the engine does no I/O, it doesn't care where operations come from or which runtime delivers them. A server would read each connection on its own task or thread (for example, a tokio task parsing rows with `csv-async`). The connections would send operations over channels to N engine workers, with clients assigned to workers by some sharding logic. Each worker owns its clients' accounts, so no locking is needed. Trade-off: transaction ids are only checked for duplicates within each worker. In production, transactions wouldn't live only in memory. They would be stored in durable storage, such as a database with a unique constraint on the transaction id. That makes the duplicate check apply across all workers, keeps the history through restarts and crashes, and limits memory to a cache of recent transactions.
